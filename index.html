@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Metamaterial acústico híbrido · Recorrido en AR</title>
+<style>
+:root{--navy:#0b1426;--panel:rgba(11,20,38,.82);--teal:#2ec4b6;--amber:#ffb703;--coral:#ff6b6b;--light:#e8f1f2;--muted:#9fb3c8}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#000;color:var(--light);font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;touch-action:none}
+#bg{position:fixed;inset:0;background:radial-gradient(800px 500px at 70% 0,#17335a,transparent),linear-gradient(#0b1426,#0f1d36)}
+video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+.hud{position:fixed;left:0;right:0;pointer-events:none}
+.top{top:0;padding:max(10px,env(safe-area-inset-top)) 14px 0}
+.top b{display:block;font-size:11px;letter-spacing:.08em;color:var(--amber)}
+.top h1{margin:2px 0 0;font-size:18px;text-shadow:0 1px 6px #000}
+.bot{bottom:0;padding:0 10px max(10px,env(safe-area-inset-bottom));pointer-events:none}
+.cap{pointer-events:auto;background:var(--panel);backdrop-filter:blur(6px);border:1px solid rgba(46,196,182,.4);border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.35}
+.cap small{display:block;margin-top:6px;color:var(--muted);font-size:11px}
+.row{display:flex;gap:6px;margin-top:8px;pointer-events:auto;flex-wrap:wrap}
+button{font:700 13px inherit;font-family:inherit;border-radius:999px;border:1px solid rgba(255,255,255,.3);background:rgba(11,20,38,.75);color:var(--light);padding:9px 14px;cursor:pointer}
+button.on{background:var(--teal);color:var(--navy);border-color:var(--teal)}
+.side{position:fixed;right:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px}
+.side button{width:44px;height:44px;padding:0;font-size:20px}
+#start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(#0b1426ee,#0b1426f5);z-index:5}
+#start .box{max-width:460px;text-align:center}
+#start h2{margin:6px 0 8px;font-size:26px}#start p{color:var(--muted);font-size:14px;line-height:1.45}
+.big{display:block;width:100%;margin:10px 0 0;padding:14px;font-size:16px;background:var(--teal);color:var(--navy);border:0}
+.alt{display:block;width:100%;margin:8px 0 0;padding:11px;background:transparent}
+.tag{color:var(--amber);font-size:12px;letter-spacing:.08em;font-weight:700}
+#msg{color:var(--coral);font-size:13px;min-height:18px;margin-top:8px}
+</style></head><body>
+<div id="bg"></div><video id="cam" playsinline muted autoplay></video><canvas id="cv"></canvas>
+<div class="hud top"><b>METAMATERIAL ACÚSTICO HÍBRIDO</b><h1 id="ttl"></h1></div>
+<div class="side"><button id="zi" aria-label="Acercar">+</button><button id="zo" aria-label="Alejar">−</button></div>
+<div class="hud bot"><div class="cap" id="cap"></div><div class="row" id="btns"></div></div>
+<div id="start"><div class="box">
+ <div class="tag">RECORRIDO EN REALIDAD AUMENTADA</div>
+ <h2>Cómo se atenúa el ruido grave</h2>
+ <p>Sigue la onda: nace en la fuente, entra a la celda unitaria, se atenúa por dentro y sale. Es una representación conceptual de la hipótesis de la tesis, no un resultado.</p>
+ <button class="big" id="go">Iniciar con cámara</button>
+ <button class="alt" id="go2">Ver sin cámara</button>
+ <p style="font-size:12px">Tu navegador te pedirá permiso para usar la cámara. No se graba ni se envía nada. Mantén el celular vertical y muévelo para mirar alrededor.</p>
+ <div id="msg"></div>
+</div></div>
+<script>
+"use strict";
+const cv=document.getElementById("cv"),g=cv.getContext("2d"),cam=document.getElementById("cam");
+let W=0,H=0,DPR=1;function size(){DPR=Math.min(2,window.devicePixelRatio||1);W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;g.setTransform(DPR,0,0,DPR,0,0)}size();addEventListener("resize",size);
+// ---------- escenas / etapas
+const STG=[
+ {n:"1 · Origen del ruido",f:-1.2,s:1.15,g:{src:1,inn:.4,cell:.35,out:.2,air:.35},t:"Generadores, ventiladores y maquinaria de obra producen ruido de baja frecuencia (20–500 Hz)."},
+ {n:"2 · Ingreso a la celda",f:-0.65,s:1.0,g:{src:.4,inn:1,cell:.6,out:.2,air:.35},t:"La onda es larga: de 0,69 m a 17 m, mucho mayor que la celda. Llega con toda su energía."},
+ {n:"3 · Dentro de la celda unitaria",f:0,s:1.4,g:{src:.15,inn:.3,cell:1,out:.3,air:1},t:"El laberinto pliega el camino de la onda, la matriz porosa la disipa en calor y los canales dejan pasar el aire."},
+ {n:"4 · Salida atenuada",f:.85,s:1.0,g:{src:.15,inn:.25,cell:.5,out:1,air:.8},t:"Sale una onda atenuada y el aire sigue pasando. Meta de diseño: ≥ 15 % más pérdida por transmisión que la espuma, con Δp ≤ 40 Pa."}
+];
+let stage=0,auto=true,tStage=0;
+const S={fx:-1.2,sc:1.15,tf:-1.2,ts:1.15,gl:{src:1,inn:.4,cell:.35,out:.2,air:.35},yaw:0,pitch:0,oy:0,ox:0};
+const btns=document.getElementById("btns");
+STG.forEach((s,i)=>{const b=document.createElement("button");b.textContent=i+1;b.onclick=()=>{setStage(i);auto=false;upd()};btns.appendChild(b)});
+const ba=document.createElement("button");ba.id="ba";ba.onclick=()=>{auto=!auto;upd()};btns.appendChild(ba);
+const bt=document.createElement("button");bt.textContent="Todo";bt.onclick=()=>{auto=false;S.tf=0;S.ts=.62;upd()};btns.appendChild(bt);
+function upd(){[...btns.children].forEach((b,i)=>{if(i<4)b.classList.toggle("on",i==stage&&S.ts!==.62)});ba.textContent=auto?"⏸ Auto":"▶ Auto";}
+function setStage(i){stage=i;tStage=0;const s=STG[i];S.tf=s.f;S.ts=s.s;document.getElementById("ttl").textContent=s.n;document.getElementById("cap").innerHTML=s.t+"<small>Representación conceptual de la hipótesis, no es un resultado. Arrastra para mover; pellizca para acercar.</small>";upd()}
+document.getElementById("zi").onclick=()=>{S.ts=Math.min(2.4,S.ts*1.2)};document.getElementById("zo").onclick=()=>{S.ts=Math.max(.4,S.ts/1.2)};
+// ---------- geometría
+const D=2.0;
+function P(x,y,z){ // escena -> pantalla
+ x=(x-S.fx)*S.sc;y=y*S.sc-0.02;z=z*S.sc;
+ const ya=S.yawT,pa=S.pitchT;let c=Math.cos(ya),s=Math.sin(ya);
+ let X=x*c-(z+D)*s,Z=x*s+(z+D)*c;c=Math.cos(pa);s=Math.sin(pa);
+ let Y=y*c-Z*s,Z2=y*s+Z*c;
+ const f=H*0.9; return {sx:W/2+f*X/Z2,sy:H/2-f*Y/Z2,z:Z2,k:f/Z2};
+}
+S.yawT=0;S.pitchT=0;
+const CELL={x0:-.25,x1:.25,y0:-.25,y1:.25,z0:-.25,z1:.25};
+function boxFaces(x0,y0,z0,x1,y1,z1){return [[[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0]],[[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]],[[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]],[[x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1]],[[x0,y0,z0],[x0,y1,z0],[x0,y1,z1],[x0,y0,z1]],[[x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1]]]}
+const SH=[.6,1,.8,.7,.65,.75];
+const PLATES=[-.2,-.1,0,.1,.2].map((x,i)=>i%2==0?{x,y0:-.25,y1:.1}:{x,y0:-.1,y1:.25}); // huecos arriba / abajo alternados
+const PATH=[[-.25,0,0],[-.2,.18,0],[-.1,-.18,0],[0,.18,0],[.1,-.18,0],[.2,.18,0],[.25,0,0]];
+let PLEN=[0];for(let i=1;i<PATH.length;i++){const a=PATH[i-1],b=PATH[i];PLEN.push(PLEN[i-1]+Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]))}
+const PTOT=PLEN[PLEN.length-1];
+function pathAt(u){const d=u*PTOT;let i=1;while(i<PLEN.length-1&&PLEN[i]<d)i++;const a=PATH[i-1],b=PATH[i],t=(d-PLEN[i-1])/(PLEN[i]-PLEN[i-1]);return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]}
+const CH=[[0,-.17],[0,.17]]; // canales de aire (y,z)
+function lerp(a,b,t){return a+(b-a)*t}function col(c1,c2,t){return[lerp(c1[0],c2[0],t)|0,lerp(c1[1],c2[1],t)|0,lerp(c1[2],c2[2],t)|0]}
+const CORAL=[255,107,107],AMBER=[255,183,3],TEAL=[46,196,182],AIR=[110,190,255];
+const rgba=(c,a)=>`rgba(${c[0]},${c[1]},${c[2]},${Math.max(0,Math.min(1,a))})`;
+// ---------- dibujo
+let items=[];
+function push(z,fn){items.push({z,fn})}
+function poly(pts,fill,stroke,lw){const q=pts.map(p=>P(...p));if(q.some(p=>p.z<.2))return;push(q.reduce((a,p)=>a+p.z,0)/q.length+.0001,()=>{g.beginPath();q.forEach((p,i)=>i?g.lineTo(p.sx,p.sy):g.moveTo(p.sx,p.sy));g.closePath();if(fill){g.fillStyle=fill;g.fill()}if(stroke){g.strokeStyle=stroke;g.lineWidth=lw||1;g.stroke()}})}
+function dot(p,r,color,a){const q=P(...p);if(q.z<.2)return;push(q.z,()=>{g.beginPath();g.arc(q.sx,q.sy,Math.max(1.2,r*q.k),0,6.283);g.fillStyle=rgba(color,a);g.fill()})}
+function line(pts,color,a,lw){const q=pts.map(p=>P(...p));if(q.some(p=>p.z<.2))return;push(q.reduce((s,p)=>s+p.z,0)/q.length,()=>{g.beginPath();q.forEach((p,i)=>i?g.lineTo(p.sx,p.sy):g.moveTo(p.sx,p.sy));g.strokeStyle=rgba(color,a);g.lineWidth=Math.max(1,lw*q[0].k);g.lineJoin="round";g.stroke()})}
+function text(p,t,color,a,size){const q=P(...p);if(q.z<.2)return;push(q.z-.5,()=>{g.font=`700 ${Math.max(11,Math.min(17,size*q.k*.9))}px system-ui,sans-serif`;g.textAlign="center";const w=g.measureText(t).width+14;g.fillStyle=`rgba(11,20,38,${.7*a})`;g.beginPath();g.roundRect?g.roundRect(q.sx-w/2,q.sy-14,w,22,8):g.rect(q.sx-w/2,q.sy-14,w,22);g.fill();g.fillStyle=rgba(color,a);g.fillText(t,q.sx,q.sy+2)})}
+function ring(x,r,color,a){const pts=[];for(let i=0;i<=28;i++){const t=i/28*6.283;pts.push([x,Math.cos(t)*r,Math.sin(t)*r])}line(pts,color,a,.02)}
+function frame(t,dt){
+ items=[];const G=S.gl;
+ // fuente
+ {const a=G.src;boxFaces(-1.45,-.13,-.13,-1.25,.13,.13).forEach((f,i)=>poly(f,rgba([90,110,140],.95*Math.max(.5,a)),rgba([200,215,235],.5*a),1));
+  ring(-1.24,.09,CORAL,a);ring(-1.24,.05,CORAL,a);
+  text([-1.35,.3,0],"1 · FUENTE",[255,183,3],Math.max(.55,a),.1);text([-1.35,.22,0],"generador",[232,241,242],Math.max(.55,a),.07)}
+ // aros de onda incidente / saliente
+ const PER=1.4,V=.45,TR=2.4,TA=(-.27+1.2)/V;
+ const nMin=Math.floor((t-TA-TR-4)/PER),nMax=Math.floor(t/PER);
+ let pres=0;
+ for(let k=nMin;k<=nMax;k++){const tk=k*PER,age=t-tk;if(age<0)continue;
+  if(age<TA){const x=-1.2+V*age;ring(x,.1+.07*age,CORAL,.9*G.inn*(0.5+.5*Math.min(1,age*2)))}
+  const ap=t-(tk+TA);
+  if(ap>=0&&ap<=TR){const u=ap/TR;pres+=1;const p=pathAt(u),c=u<.5?col(CORAL,AMBER,u*2):col(AMBER,TEAL,(u-.5)*2);
+   for(let j=0;j<9;j++){const uj=Math.max(0,u-j*.012),pj=pathAt(uj);dot(pj,.026*(1-j*.07),c,(1-j/9)*.95*G.cell)}}
+  const ae=t-(tk+TA+TR);
+  if(ae>=0){const x=.27+V*ae;if(x<1.5)ring(x,.06+.018*ae,TEAL,.55*G.out)}}
+ // cinta de onda (misma longitud de onda; amplitud menor a la salida)
+ const lam=.55,k=6.283/lam,om=6.283*.9;
+ const ribbon=(xa,xb,A,c,a)=>{const pts=[];for(let x=xa;x<=xb+.001;x+=.025)pts.push([x,A*Math.sin(k*x-om*t),0]);line(pts,c,a,.018)};
+ ribbon(-1.15,-.3,.17,CORAL,.95*G.inn);ribbon(.3,1.45,.045,TEAL,.95*G.out);
+ line([[-1.15,0,0],[-.3,0,0]],[255,255,255],.12*G.inn,.006);line([[.3,0,0],[1.45,0,0]],[255,255,255],.12*G.out,.006);
+ text([-.55,.42,0],"onda incidente (fuerte)",CORAL,Math.max(.5,G.inn),.075);text([.95,.2,0],"3 · onda atenuada",TEAL,Math.max(.5,G.out),.08);
+ // celda
+ const cc=G.cell,C=CELL;
+ boxFaces(C.x0,C.y0,C.z0,C.x1,C.y1,C.z1).forEach((f,i)=>poly(f,`rgba(${lerp(46,255,Math.min(1,pres*.6))|0},${lerp(196,183,Math.min(1,pres*.6))|0},${lerp(182,3,Math.min(1,pres*.6))|0},${(.10+.10*Math.min(1,pres))*cc})`,rgba([180,200,215],.55*cc),1.2));
+ PLATES.forEach(p=>boxFaces(p.x-.01,p.y0,C.z0,p.x+.01,p.y1,C.z1).forEach((f,i)=>poly(f,rgba([Math.round(255*SH[i]),Math.round(183*SH[i]),3],.95*Math.max(.4,cc)),null)));
+ line(PATH.map(a=>a),AMBER,.35*cc,.008);
+ // canales de aire
+ CH.forEach(([y,z])=>{line([[-1.1,y,z],[1.35,y,z]],AIR,.18*G.air,.05);for(let i=0;i<22;i++){const x=-1.1+((i/22*2.45+t*.35)%2.45);dot([x,y,z],.016,AIR,.9*G.air)}});
+ text([0,.43,0],"2 · CELDA UNITARIA",[127,245,234],Math.max(.55,cc),.1);
+ text([1.05,-.22,0],"el aire sigue pasando",AIR,Math.max(.5,G.air),.07);
+ if(stage==2||S.ts<.7){text([0,-.45,0],"laberinto + matriz porosa + canales",[232,241,242],Math.max(.5,cc),.07)}
+ items.sort((a,b)=>b.z-a.z);items.forEach(i=>i.fn());
+}
+// ---------- bucle
+let last=performance.now(),started=false;
+function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;const t=now/1000;
+ g.clearRect(0,0,W,H);
+ if(started){
+  if(auto){tStage+=dt;if(tStage>7.5)setStage((stage+1)%4)}
+  S.fx=lerp(S.fx,S.tf,Math.min(1,dt*3));S.sc=lerp(S.sc,S.ts,Math.min(1,dt*3));
+  const gt=S.ts==.62?{src:1,inn:1,cell:1,out:1,air:1}:STG[stage].g;for(const k in S.gl)S.gl[k]=lerp(S.gl[k],gt[k],Math.min(1,dt*4));
+  S.yawT=lerp(S.yawT,tyaw+S.yaw,.25);S.pitchT=lerp(S.pitchT,Math.max(-1.2,Math.min(1.2,tpitch+S.pitch)),.25);
+  frame(t,dt)}
+ requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+// ---------- sensores y gestos
+let tyaw=0,tpitch=0,a0=null,hasOri=false,smY=0,smP=0;
+function onOri(e){if(e.alpha==null||e.beta==null)return;hasOri=true;if(a0===null)a0=e.alpha;let d=e.alpha-a0;d=((d+540)%360)-180;const y=-d*Math.PI/180,p=(Math.max(20,Math.min(160,e.beta))-90)*Math.PI/180;tyaw=y;tpitch=p}
+async function startOri(){try{if(typeof DeviceOrientationEvent!=="undefined"&&DeviceOrientationEvent.requestPermission){const r=await DeviceOrientationEvent.requestPermission();if(r!=="granted")return}}catch(e){}addEventListener("deviceorientation",onOri,true)}
+const ptrs=new Map();let pd=0;
+cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,[e.clientX,e.clientY]);if(ptrs.size==2){const [a,b]=[...ptrs.values()];pd=Math.hypot(a[0]-b[0],a[1]-b[1])}});
+cv.addEventListener("pointermove",e=>{if(!ptrs.has(e.pointerId))return;const o=ptrs.get(e.pointerId);ptrs.set(e.pointerId,[e.clientX,e.clientY]);
+ if(ptrs.size==1){S.yaw+=(e.clientX-o[0])*.004;S.pitch+=(e.clientY-o[1])*.004}
+ else if(ptrs.size==2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pd)S.ts=Math.max(.4,Math.min(2.4,S.ts*d/pd));pd=d}});
+const up=e=>{ptrs.delete(e.pointerId);pd=0};cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
+cv.addEventListener("wheel",e=>{S.ts=Math.max(.4,Math.min(2.4,S.ts*(e.deltaY<0?1.1:.9)))},{passive:true});
+// ---------- inicio
+const msg=document.getElementById("msg");
+function begin(){document.getElementById("start").style.display="none";started=true;a0=null;setStage(0)}
+document.getElementById("go").onclick=async()=>{
+ msg.textContent="";
+ try{
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error("insecure");
+  const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+  cam.srcObject=st;cam.style.display="block";document.getElementById("bg").style.display="none";await cam.play().catch(()=>{});
+ }catch(e){msg.textContent=(e&&e.message==="insecure")?"La cámara solo funciona desde un enlace https. Mostrando la escena sin cámara.":"No se pudo usar la cámara (¿permiso denegado?). Mostrando la escena sin cámara.";}
+ startOri();begin()};
+document.getElementById("go2").onclick=()=>{startOri();begin()};
+</script></body></html>
